@@ -66,10 +66,14 @@
 int HICMA_zblkodr_Tile(MORSE_enum uplo,
         MORSE_desc_t *AUV,
         MORSE_desc_t *AD,
+        MORSE_desc_t *ADCp,
         MORSE_desc_t *Ark,
         MORSE_desc_t *a,
         MORSE_desc_t *b,
+        MORSE_desc_t *aCp,
+        MORSE_desc_t *bCp,
         MORSE_desc_t *y,
+        MORSE_desc_t *p,
         MORSE_desc_t *idx,
         int rk, int maxrk, double acc
         )
@@ -86,16 +90,20 @@ int HICMA_zblkodr_Tile(MORSE_enum uplo,
     }
     morse_sequence_create(morse, &sequence);
     HICMA_zpotrf_Tile_Async(uplo,
-            AUV, AD, Ark, a, b, y, idx,
+            AUV, AD, ADCp, Ark, a, b, aCp, bCp, y, p, idx,
             rk, maxrk, acc,
             sequence, &request
             );
     MORSE_Desc_Flush( AD, sequence );
     MORSE_Desc_Flush( AUV, sequence );
     MORSE_Desc_Flush( Ark, sequence );
+    MORSE_Desc_Flush( ADCp, sequence );
     MORSE_Desc_Flush( a, sequence );
     MORSE_Desc_Flush( b, sequence );
+    MORSE_Desc_Flush( aCp, sequence );
+    MORSE_Desc_Flush( bCp, sequence );
     MORSE_Desc_Flush( y, sequence );
+    MORSE_Desc_Flush( p, sequence );
     MORSE_Desc_Flush( idx, sequence );
     morse_sequence_wait(morse, sequence);
     /*RUNTIME_desc_getoncpu(AD);*/
@@ -127,10 +135,14 @@ int HICMA_zblkodr_Tile(MORSE_enum uplo,
 int HICMA_zpotrf_Tile_Async(MORSE_enum uplo,
         MORSE_desc_t *AUV,
         MORSE_desc_t *AD,
+        MORSE_desc_t *ADCp,
         MORSE_desc_t *Ark,
         MORSE_desc_t *a,
         MORSE_desc_t *b,
+        MORSE_desc_t *aCp,
+        MORSE_desc_t *bCp,
         MORSE_desc_t *y,
+        MORSE_desc_t *p,
         MORSE_desc_t *idx,
         int rk, int maxrk, double acc,
         MORSE_sequence_t *sequence, MORSE_request_t *request
@@ -161,10 +173,14 @@ int HICMA_zpotrf_Tile_Async(MORSE_enum uplo,
     if (
             (morse_desc_check(AUV) != MORSE_SUCCESS)
             || (morse_desc_check(AD) != MORSE_SUCCESS)
+            || (morse_desc_check(ADCp) != MORSE_SUCCESS)
             || (morse_desc_check(Ark) != MORSE_SUCCESS)
             || (morse_desc_check(a) != MORSE_SUCCESS)
             || (morse_desc_check(b) != MORSE_SUCCESS)
+            || (morse_desc_check(aCp) != MORSE_SUCCESS)
+            || (morse_desc_check(bCp) != MORSE_SUCCESS)
             || (morse_desc_check(y) != MORSE_SUCCESS)
+            || (morse_desc_check(p) != MORSE_SUCCESS)
             || (morse_desc_check(idx) != MORSE_SUCCESS)
             ){
         morse_error("HICMA_zpotrf_Tile_Async", "invalid descriptor");
@@ -195,13 +211,26 @@ int HICMA_zpotrf_Tile_Async(MORSE_enum uplo,
         morse_error("HICMA_zpotrf_Tile_Async", "illegal value of uplo");
         return morse_request_fail(sequence, request, -1);
     }
+    if (ADCp->nb != ADCp->mb) {
+        morse_error("HICMA_zpotrf_Tile_Async", "only square tiles supported");
+        return morse_request_fail(sequence, request, MORSE_ERR_ILLEGAL_VALUE);
+    }
+    if (ADCp->nb != aCp->mb) {
+        morse_error("HICMA_zpotrf_Tile_Async", "wrong tile size for aCp");
+        return morse_request_fail(sequence, request, MORSE_ERR_ILLEGAL_VALUE);
+    }
+    if (ADCp->nb != bCp->mb) {
+        morse_error("HICMA_zpotrf_Tile_Async", "wrong tile size for bCp");
+        return morse_request_fail(sequence, request, MORSE_ERR_ILLEGAL_VALUE);
+    }
+
     /* Quick return */
 /*
     if (chameleon_max(N, 0) == 0)
         return MORSE_SUCCESS;
 */
 
-    hicma_pzpotrf(uplo, AUV, AD, Ark, a, b, y, idx, sequence, request,
+    hicma_pzpotrf(uplo, AUV, AD, ADCp, Ark, a, b, aCp, bCp, y, p, idx, sequence, request,
             rk, maxrk, acc
             );
 
