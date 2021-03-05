@@ -22,6 +22,7 @@
 
 #include "control/hicma_config.h"
 #include <stdio.h>
+#include <algorithm>
 
 extern int store_only_diagonal_tiles;
 extern int print_index;
@@ -118,26 +119,52 @@ void hicma_pzblkodr(MORSE_enum uplo,
 
             int tempkmd; 
             int ldakd;
+	    int ldakd_min;
+            int ADicol;
+            int ADicol_min;
 
             //options.priority = 2*AD->mt - 2*k;
             options.priority = 5;
 
-            int ADicol;
-            if(store_only_diagonal_tiles == 1){
-                ADicol = 0;
-            } else {
-                ADicol = k;
-            }
 	    // uni odr for each diag blk
             for (m = k; m < AD->mt; m++) {
                 tempkmd = m == AD->mt-1 ? AD->m-m*AD->mb : AD->mb;
                 ldakd = BLKLDD(AD, m);
+                if(store_only_diagonal_tiles == 1){
+                    ADicol = 0;
+                } else {
+                    ADicol = m;
+                }
                 HICMA_TASK_zblkodr(
                         &options,
                         MorseLower, tempkmd, AD->mb,
                         AD, a, b, ADCp, aCp, bCp, idx, p, m, ADicol, ldakd, 0);
 	    }
-	    // continue here, may need to sync 
+	    
+	    // find which.min(p)
+	    if(RUNTIME_desc_acquire(p) != MORSE_SUCCESS) {
+		printf("Runtime acquire for p failed\n");
+		return;
+	    }
+	    double *p_data = (double *)p->mat;
+	    int min_index = std::min_element(p_data, p_data + AD->mt) - p_data;
+	    RUNTIME_desc_release(p);
+
+	    // block-wise switch
+	    if(min_index != k){
+                if(store_only_diagonal_tiles == 1){
+		    ADicol = 0;
+                    ADicol_min = 0;
+                } else {
+		    ADicol = k;
+                    ADicol_min = min_index;
+                }
+                ldakd = BLKLDD(AD, k);
+                ldakd_min = BLKLDD(AD, min_index);
+	        HICMA_TASK_zswitch(&options, AD->mb, AD, k, min_index, ADicol, 
+	          ADicol_min, ldakd, ldakd_min, 0);
+		// continue here
+	    }
 
             if(pzblkodr_print_index){
                 printf("POTRF\t|tempkmd:%d k:%d ldakd:%d\n", tempkmd, k, ldakd);
